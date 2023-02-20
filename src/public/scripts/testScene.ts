@@ -7,6 +7,15 @@ import { VRButton } from 'three/examples/jsm/webxr/VRButton';
 // eslint-disable-next-line import/no-extraneous-dependencies
 import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory';
 
+// eslint-disable-next-line import/no-extraneous-dependencies
+import { io, Socket } from 'socket.io-client';
+
+type User = {
+  id: string;
+  position: any;
+  rotation: any;
+};
+
 class TestScene {
   public camera: THREE.PerspectiveCamera = new THREE.PerspectiveCamera(
     50,
@@ -50,14 +59,19 @@ class TestScene {
       new THREE.MeshBasicMaterial({ color: 0x808080, transparent: true, opacity: 0.25 }),
     );
 
+  public localSocket: Socket | undefined;
+
+  public users: User[] = [];
+
   public baseReferenceSpace: XRReferenceSpace | null | undefined;
 
   public INTERSECTION: THREE.Vector3 | undefined;
 
   public tempMatrix = new THREE.Matrix4();
 
-  constructor() {
+  constructor(socket: Socket) {
     this.init();
+    this.localSocket = socket;
   }
 
   init() {
@@ -182,6 +196,24 @@ class TestScene {
     }
   }
 
+  updatePositions() {
+    for (let i = 0; i < this.users.length; i += 1) {
+      const user = this.users[i];
+      const userCube = this.scene.getObjectByName(user.id);
+      if (userCube) {
+        userCube.position.set(user.position.x, user.position.y, user.position.z);
+      } else {
+        const newCube = new THREE.Mesh(
+          new THREE.BoxGeometry(0.1, 0.1, 0.1),
+          new THREE.MeshBasicMaterial({ color: 0xff0000 }),
+        );
+        newCube.name = user.id;
+        newCube.position.set(user.position.x, user.position.y, user.position.z);
+        this.scene.add(newCube);
+      }
+    }
+  }
+
   onWindowResize() {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
@@ -220,6 +252,12 @@ class TestScene {
     }
 
     this.marker.visible = this.INTERSECTION !== undefined;
+
+    if (this.localSocket && this.camera) {
+      this.localSocket.emit('updatePosition', { id: this.localSocket.id, position: this.camera.position, rotation: this.camera.rotation });
+    }
+
+    this.updatePositions();
 
     this.renderer.render(this.scene, this.camera);
   }
