@@ -1,6 +1,5 @@
 // eslint-disable-next-line import/no-extraneous-dependencies
 import * as THREE from 'three';
-
 // eslint-disable-next-line import/no-extraneous-dependencies
 import { BoxLineGeometry } from 'three/examples/jsm/geometries/BoxLineGeometry';
 // eslint-disable-next-line import/no-extraneous-dependencies
@@ -8,220 +7,226 @@ import { VRButton } from 'three/examples/jsm/webxr/VRButton';
 // eslint-disable-next-line import/no-extraneous-dependencies
 import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory';
 
-let camera: THREE.PerspectiveCamera;
-let scene: THREE.Scene;
-let raycaster: THREE.Raycaster;
-let renderer: THREE.WebGLRenderer;
-let controller1: THREE.Object3D<THREE.Event> | THREE.XRTargetRaySpace;
-let controller2: THREE.Object3D<THREE.Event> | THREE.XRTargetRaySpace;
-let controllerGrip1;
-let controllerGrip2;
-let room;
-let marker: THREE.Object3D<THREE.Event> | THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
-let floor: THREE.Object3D<THREE.Event> | THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
-let baseReferenceSpace: XRReferenceSpace | null;
-let INTERSECTION: THREE.Vector3 | undefined;
+class TestScene {
+  public camera: THREE.PerspectiveCamera = new THREE.PerspectiveCamera(
+    50,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    10,
+  );
 
-const tempMatrix = new THREE.Matrix4();
+  public scene: THREE.Scene = new THREE.Scene();
 
-function init() {
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x505050);
+  public raycaster: THREE.Raycaster = new THREE.Raycaster();
 
-  camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 10);
-  camera.position.set(0, 1, 3);
+  public renderer: THREE.WebGLRenderer = new THREE.WebGLRenderer({ antialias: true });
 
-  room = new THREE.LineSegments(
+  public controller1:
+  THREE.Object3D<THREE.Event> | THREE.XRTargetRaySpace = this.renderer.xr.getController(0);
+
+  public controller2:
+  THREE.Object3D<THREE.Event> | THREE.XRTargetRaySpace = this.renderer.xr.getController(1);
+
+  public controllerGrip1: THREE.XRGripSpace | undefined;
+
+  public controllerGrip2: THREE.XRGripSpace | undefined;
+
+  public room: THREE.LineSegments = new THREE.LineSegments(
     new BoxLineGeometry(6, 6, 6, 10, 10, 10).translate(0, 3, 0),
     new THREE.LineBasicMaterial({ color: 0x808080 }),
   );
-  scene.add(room);
 
-  scene.add(new THREE.HemisphereLight(0x606060, 0x404040));
+  public marker:
+  THREE.Object3D<THREE.Event> |
+  THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial> = new THREE.Mesh(
+      new THREE.CircleGeometry(0.25, 32).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0x808080 }),
+    );
 
-  const light = new THREE.DirectionalLight(0xffffff);
-  light.position.set(1, 1, 1).normalize();
-  scene.add(light);
+  public floor:
+  THREE.Object3D<THREE.Event> |
+  THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial> = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.8, 4.8, 2, 2).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0x808080, transparent: true, opacity: 0.25 }),
+    );
 
-  marker = new THREE.Mesh(
-    new THREE.CircleGeometry(0.25, 32).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color: 0x808080 }),
-  );
-  scene.add(marker);
+  public baseReferenceSpace: XRReferenceSpace | null | undefined;
 
-  floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(4.8, 4.8, 2, 2).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color: 0x808080, transparent: true, opacity: 0.25 }),
-  );
-  scene.add(floor);
+  public INTERSECTION: THREE.Vector3 | undefined;
 
-  raycaster = new THREE.Raycaster();
+  public tempMatrix = new THREE.Matrix4();
 
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.outputEncoding = THREE.sRGBEncoding;
+  constructor() {
+    this.init();
+  }
 
-  // eslint-disable-next-line no-return-assign
-  renderer.xr.addEventListener('sessionstart', () => baseReferenceSpace = renderer.xr.getReferenceSpace());
-  renderer.xr.enabled = true;
+  init() {
+    this.scene.background = new THREE.Color(0x505050);
 
-  document.body.appendChild(renderer.domElement);
-  document.body.appendChild(VRButton.createButton(renderer));
+    this.camera.position.set(0, 1, 3);
 
-  // controllers
+    this.scene.add(this.room);
 
-  const onSelectStart = () => {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    this.userData.isSelecting = true;
-  };
+    this.scene.add(new THREE.HemisphereLight(0x606060, 0x404040));
 
-  const onSelectEnd = () => {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    this.userData.isSelecting = false;
+    const light = new THREE.DirectionalLight(0xffffff);
+    light.position.set(1, 1, 1).normalize();
+    this.scene.add(light);
 
-    if (INTERSECTION) {
-      const offsetPosition = {
-        x: -INTERSECTION.x, y: -INTERSECTION.y, z: -INTERSECTION.z, w: 1,
-      };
-      const offsetRotation = new THREE.Quaternion();
-      const transform = new XRRigidTransform(offsetPosition, offsetRotation);
-      if (baseReferenceSpace) {
-        renderer.xr.setReferenceSpace(baseReferenceSpace.getOffsetReferenceSpace(transform));
-      } else {
-        throw new Error('baseReferenceSpace is null');
+    this.scene.add(this.marker);
+
+    this.scene.add(this.floor);
+
+    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setSize(window.innerWidth * 0.9, window.innerHeight * 0.9);
+    this.renderer.domElement.className = 'threejs_canvas';
+    this.renderer.outputEncoding = THREE.sRGBEncoding;
+
+    // eslint-disable-next-line no-return-assign
+    this.renderer.xr.addEventListener('sessionstart', () => this.baseReferenceSpace = this.renderer.xr.getReferenceSpace());
+    this.renderer.xr.enabled = true;
+
+    document.body.appendChild(this.renderer.domElement);
+    document.body.appendChild(VRButton.createButton(this.renderer));
+
+    // controllers
+
+    const onSelectStart = () => {
+      this.scene.userData.isSelecting = true;
+    };
+
+    const onSelectEnd = () => {
+      this.scene.userData.isSelecting = false;
+
+      if (this.INTERSECTION) {
+        const offsetPosition = {
+          x: -this.INTERSECTION.x, y: -this.INTERSECTION.y, z: -this.INTERSECTION.z, w: 1,
+        };
+        const offsetRotation = new THREE.Quaternion();
+        const transform = new XRRigidTransform(offsetPosition, offsetRotation);
+        if (this.baseReferenceSpace) {
+          this.renderer.xr.setReferenceSpace(
+            this.baseReferenceSpace.getOffsetReferenceSpace(transform),
+          );
+        } else {
+          throw new Error('baseReferenceSpace is null');
+        }
+      }
+    };
+
+    this.controller1 = this.renderer.xr.getController(0);
+    this.controller1.addEventListener('selectstart', onSelectStart);
+    this.controller1.addEventListener('selectend', onSelectEnd);
+    this.controller1.addEventListener('connected', (event) => {
+      this.scene.add(this.buildController(event.data));
+    });
+    this.controller1.addEventListener('disconnected', () => {
+      this.scene.remove(this.scene.children[0]);
+    });
+    this.scene.add(this.controller1);
+
+    this.controller2 = this.renderer.xr.getController(1);
+    this.controller2.addEventListener('selectstart', onSelectStart);
+    this.controller2.addEventListener('selectend', onSelectEnd);
+    this.controller2.addEventListener('connected', (event) => {
+      this.scene.add(this.buildController(event.data));
+    });
+    this.controller2.addEventListener('disconnected', () => {
+      this.scene.remove(this.scene.children[0]);
+    });
+    this.scene.add(this.controller2);
+
+    // The XRControllerModelFactory will automatically fetch controller models
+    // that match what the user is holding as closely as possible. The models
+    // should be attached to the object returned from getControllerGrip in
+    // order to match the orientation of the held device.
+
+    const controllerModelFactory = new XRControllerModelFactory();
+
+    this.controllerGrip1 = this.renderer.xr.getControllerGrip(0);
+    this.controllerGrip1.add(controllerModelFactory.createControllerModel(this.controllerGrip1));
+    this.scene.add(this.controllerGrip1);
+
+    this.controllerGrip2 = this.renderer.xr.getControllerGrip(1);
+    this.controllerGrip2.add(controllerModelFactory.createControllerModel(this.controllerGrip2));
+    this.scene.add(this.controllerGrip2);
+
+    window.addEventListener('resize', this.onWindowResize, false);
+  }
+
+  // eslint-disable-next-line class-methods-use-this
+  buildController(data: { targetRayMode: any; }) {
+    let geometry; let
+      material;
+
+    switch (data.targetRayMode) {
+      case 'tracked-pointer':
+
+        geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, -1], 3));
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute([0.5, 0.5, 0.5, 0, 0, 0], 3));
+
+        material = new THREE.LineBasicMaterial(
+          { vertexColors: true, blending: THREE.AdditiveBlending },
+        );
+        return new THREE.Line(geometry, material);
+
+      case 'gaze':
+
+        geometry = new THREE.RingGeometry(0.02, 0.04, 32).translate(0, 0, -1);
+        material = new THREE.MeshBasicMaterial({ opacity: 0.5, transparent: true });
+        return new THREE.Mesh(geometry, material);
+
+      default:
+        return new THREE.Mesh();
+    }
+  }
+
+  onWindowResize() {
+    this.camera.aspect = window.innerWidth / window.innerHeight;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  render() {
+    this.INTERSECTION = undefined;
+
+    if (this.controller1.userData.isSelecting === true) {
+      this.tempMatrix.identity().extractRotation(this.controller1.matrixWorld);
+
+      this.raycaster.ray.origin.setFromMatrixPosition(this.controller1.matrixWorld);
+      this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(this.tempMatrix);
+
+      const intersects = this.raycaster.intersectObjects([this.floor]);
+
+      if (intersects.length > 0) {
+        this.INTERSECTION = intersects[0].point;
+      }
+    } else if (this.controller2.userData.isSelecting === true) {
+      this.tempMatrix.identity().extractRotation(this.controller2.matrixWorld);
+
+      this.raycaster.ray.origin.setFromMatrixPosition(this.controller2.matrixWorld);
+      this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(this.tempMatrix);
+
+      const intersects = this.raycaster.intersectObjects([this.floor]);
+
+      if (intersects.length > 0) {
+        this.INTERSECTION = intersects[0].point;
       }
     }
-  };
 
-  controller1 = renderer.xr.getController(0);
-  controller1.addEventListener('selectstart', onSelectStart);
-  controller1.addEventListener('selectend', onSelectEnd);
-  controller1.addEventListener('connected', function (event) {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    // eslint-disable-next-line @typescript-eslint/no-use-before-define
-    this.add(buildController(event.data));
-  });
-  controller1.addEventListener('disconnected', function () {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    this.remove(this.children[0]);
-  });
-  scene.add(controller1);
+    if (this.INTERSECTION) {
+      this.marker.position.copy(this.INTERSECTION);
+    }
 
-  controller2 = renderer.xr.getController(1);
-  controller2.addEventListener('selectstart', onSelectStart);
-  controller2.addEventListener('selectend', onSelectEnd);
-  controller2.addEventListener('connected', function (event) {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    // eslint-disable-next-line @typescript-eslint/no-use-before-define
-    this.add(buildController(event.data));
-  });
-  controller2.addEventListener('disconnected', function () {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    this.remove(this.children[0]);
-  });
-  scene.add(controller2);
+    this.marker.visible = this.INTERSECTION !== undefined;
 
-  // The XRControllerModelFactory will automatically fetch controller models
-  // that match what the user is holding as closely as possible. The models
-  // should be attached to the object returned from getControllerGrip in
-  // order to match the orientation of the held device.
+    this.renderer.render(this.scene, this.camera);
+  }
 
-  const controllerModelFactory = new XRControllerModelFactory();
-
-  controllerGrip1 = renderer.xr.getControllerGrip(0);
-  controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
-  scene.add(controllerGrip1);
-
-  controllerGrip2 = renderer.xr.getControllerGrip(1);
-  controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
-  scene.add(controllerGrip2);
-
-  //
-
-  // eslint-disable-next-line @typescript-eslint/no-use-before-define
-  window.addEventListener('resize', onWindowResize, false);
-}
-
-// eslint-disable-next-line consistent-return
-function buildController(data: { targetRayMode: any; }) {
-  let geometry; let
-    material;
-
-  // eslint-disable-next-line default-case
-  switch (data.targetRayMode) {
-    case 'tracked-pointer':
-
-      geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, -1], 3));
-      geometry.setAttribute('color', new THREE.Float32BufferAttribute([0.5, 0.5, 0.5, 0, 0, 0], 3));
-
-      material = new THREE.LineBasicMaterial(
-        { vertexColors: true, blending: THREE.AdditiveBlending },
-      );
-      return new THREE.Line(geometry, material);
-
-    case 'gaze':
-
-      geometry = new THREE.RingGeometry(0.02, 0.04, 32).translate(0, 0, -1);
-      material = new THREE.MeshBasicMaterial({ opacity: 0.5, transparent: true });
-      return new THREE.Mesh(geometry, material);
+  animate() {
+    this.renderer.setAnimationLoop(this.render.bind(this));
   }
 }
 
-function onWindowResize() {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-
-  renderer.setSize(window.innerWidth, window.innerHeight);
-}
-
-//
-
-function animate() {
-  // eslint-disable-next-line @typescript-eslint/no-use-before-define
-  renderer.setAnimationLoop(render);
-}
-
-function render() {
-  INTERSECTION = undefined;
-
-  if (controller1.userData.isSelecting === true) {
-    tempMatrix.identity().extractRotation(controller1.matrixWorld);
-
-    raycaster.ray.origin.setFromMatrixPosition(controller1.matrixWorld);
-    raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
-
-    const intersects = raycaster.intersectObjects([floor]);
-
-    if (intersects.length > 0) {
-      INTERSECTION = intersects[0].point;
-    }
-  } else if (controller2.userData.isSelecting === true) {
-    tempMatrix.identity().extractRotation(controller2.matrixWorld);
-
-    raycaster.ray.origin.setFromMatrixPosition(controller2.matrixWorld);
-    raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
-
-    const intersects = raycaster.intersectObjects([floor]);
-
-    if (intersects.length > 0) {
-      INTERSECTION = intersects[0].point;
-    }
-  }
-
-  if (INTERSECTION) marker.position.copy(INTERSECTION);
-
-  marker.visible = INTERSECTION !== undefined;
-
-  renderer.render(scene, camera);
-}
-
-init();
-animate();
+export default TestScene;
