@@ -1,0 +1,14 @@
+version: "3"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - type: bind
+        source: ./
+        target: /app
+    ports:
+      - "${SERVER_PORT}:${SERVER_PORT}"
+      - "${SECURE_SERVER_PORT}:${SECURE_SERVER_PORT}"

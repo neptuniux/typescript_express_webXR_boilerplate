@@ -1,0 +1,14 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+
+RUN npm install
+
+COPY . .
+
+EXPOSE ${SERVER_PORT}
+EXPOSE ${SECURE_SERVER_PORT}
+
+CMD ["npm", "run", "dev"]
