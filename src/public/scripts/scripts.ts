@@ -20,7 +20,8 @@ socket.on('connect', () => {
 });
 
 socket.on('disconnect', () => {
-  socket.emit('leave', 'room1');
+  console.log('Disconnected');
+  socket.emit('disconnect');
 });
 
 socket.on('message', (message: string) => {
@@ -31,6 +32,6 @@ socket.on('updatePosition', (users: User[]) => {
   if (scene.users !== users) {
     scene.users = users;
     // scene.updatePositions(users);
-    console.log('Updated positions:', scene.users);
+    // console.log('Updated positions:', scene.users);
   }
 });

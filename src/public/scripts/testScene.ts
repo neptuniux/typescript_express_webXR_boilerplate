@@ -76,20 +76,23 @@ class TestScene {
 
   init() {
     this.scene.background = new THREE.Color(0x505050);
-
     this.camera.position.set(0, 1, 3);
-
     this.scene.add(this.room);
 
     this.scene.add(new THREE.HemisphereLight(0x606060, 0x404040));
-
     const light = new THREE.DirectionalLight(0xffffff);
     light.position.set(1, 1, 1).normalize();
     this.scene.add(light);
-
     this.scene.add(this.marker);
-
     this.scene.add(this.floor);
+
+    const dragableCube = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 0.2, 0.2),
+      new THREE.MeshBasicMaterial({ color: 0x00ff00 }),
+    );
+    dragableCube.name = 'draggableCube';
+    dragableCube.position.set(0, 0, -1);
+    this.scene.add(dragableCube);
 
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(window.innerWidth * 0.9, window.innerHeight * 0.9);
@@ -143,17 +146,13 @@ class TestScene {
     this.controller2.addEventListener('selectstart', onSelectStart);
     this.controller2.addEventListener('selectend', onSelectEnd);
     this.controller2.addEventListener('connected', (event) => {
+      console.log('controller2 connected', event);
       this.scene.add(this.buildController(event.data));
     });
     this.controller2.addEventListener('disconnected', () => {
       this.scene.remove(this.scene.children[0]);
     });
     this.scene.add(this.controller2);
-
-    // The XRControllerModelFactory will automatically fetch controller models
-    // that match what the user is holding as closely as possible. The models
-    // should be attached to the object returned from getControllerGrip in
-    // order to match the orientation of the held device.
 
     const controllerModelFactory = new XRControllerModelFactory();
 
@@ -166,29 +165,45 @@ class TestScene {
     this.scene.add(this.controllerGrip2);
 
     window.addEventListener('resize', this.onWindowResize, false);
+
+    const button = document.getElementById('moveCube');
+    if (button) {
+      button.addEventListener('click', () => {
+        const cube = this.scene.getObjectByName('draggableCube');
+        if (cube) {
+          cube.position.set(
+            Math.random() * 2 - 1,
+            Math.random() * 2 - 1,
+            Math.random() * 2 - 1,
+          );
+          cube.rotation.set(
+            Math.random() * 2 * Math.PI,
+            Math.random() * 2 * Math.PI,
+            Math.random() * 2 * Math.PI,
+          );
+        }
+      });
+    }
   }
 
-  // eslint-disable-next-line class-methods-use-this
-  buildController(data: { targetRayMode: any; }) {
-    let geometry; let
-      material;
+  // eslint-disable-next-line class-methods-use-this,consistent-return
+  buildController(data: { targetRayMode: any }) {
+    let geometry;
+    let material;
 
     switch (data.targetRayMode) {
       case 'tracked-pointer':
-
         geometry = new THREE.BufferGeometry();
         geometry.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, -1], 3));
         geometry.setAttribute('color', new THREE.Float32BufferAttribute([0.5, 0.5, 0.5, 0, 0, 0], 3));
-
         material = new THREE.LineBasicMaterial(
           { vertexColors: true, blending: THREE.AdditiveBlending },
         );
         return new THREE.Line(geometry, material);
 
       case 'gaze':
-
         geometry = new THREE.RingGeometry(0.02, 0.04, 32).translate(0, 0, -1);
-        material = new THREE.MeshBasicMaterial({ opacity: 0.5, transparent: true });
+        material = new THREE.MeshBasicMaterial({ opacity: 0.5, transparent: false });
         return new THREE.Mesh(geometry, material);
 
       default:
@@ -197,21 +212,24 @@ class TestScene {
   }
 
   updatePositions() {
+    let userGroup = this.scene.getObjectByName('userGroup');
+    if (userGroup) {
+      this.scene.remove(userGroup);
+    } else {
+      userGroup = new THREE.Group();
+      userGroup.name = 'userGroup';
+    }
     for (let i = 0; i < this.users.length; i += 1) {
       const user = this.users[i];
-      const userCube = this.scene.getObjectByName(user.id);
-      if (userCube) {
-        userCube.position.set(user.position.x, user.position.y, user.position.z);
-      } else {
-        const newCube = new THREE.Mesh(
-          new THREE.BoxGeometry(0.1, 0.1, 0.1),
-          new THREE.MeshBasicMaterial({ color: 0xff0000 }),
-        );
-        newCube.name = user.id;
-        newCube.position.set(user.position.x, user.position.y, user.position.z);
-        this.scene.add(newCube);
-      }
+      const newCube = new THREE.Mesh(
+        new THREE.BoxGeometry(0.1, 0.1, 0.1),
+        new THREE.MeshBasicMaterial({ color: 0xff0000 }),
+      );
+      newCube.name = user.id;
+      userGroup.add(newCube).position.set(user.position.x, user.position.y, user.position.z);
+      // newCube.rotation.set(user.rotation.x, user.rotation.y, user.rotation.z);
     }
+    this.scene.add(userGroup);
   }
 
   onWindowResize() {

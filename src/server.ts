@@ -5,6 +5,8 @@ import * as https from 'https';
 import * as fs from 'fs';
 // eslint-disable-next-line import/no-extraneous-dependencies
 import { Server, Socket } from 'socket.io';
+// eslint-disable-next-line import/no-extraneous-dependencies
+import * as THREE from 'three';
 import * as routes from './routes/general_routes';
 
 dotenv.config();
@@ -68,10 +70,10 @@ io.on('connection', (socket: Socket) => {
     }
   });
 
-  socket.on('leave', (room: any) => {
-    socket.leave(room);
+  socket.on('disconnect', () => {
     users.splice(users.findIndex((u) => u.id === socket.id), 1);
-    io.to('room1').emit('updatePositions', users);
+    console.log('User left:', socket.id, 'current users:', users);
+    io.to('room1').emit('updatePosition', users);
   });
 
   socket.on('message', (message: { room: any; }) => {
