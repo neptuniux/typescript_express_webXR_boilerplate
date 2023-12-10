@@ -1,0 +1,1 @@
+export class Example {\n    private message: string;\n\n    constructor(message: string) {\n        this.message = message;\n    }\n\n    public sayHello(): string {\n        return `Hello, ${this.message}!`;\n    }\n}
